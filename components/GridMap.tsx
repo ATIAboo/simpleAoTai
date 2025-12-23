@@ -12,16 +12,25 @@ const GridMap: React.FC<GridMapProps> = ({ mapData, playerPosition }) => {
   const viewportOffset = Math.floor(VIEWPORT_SIZE / 2);
   
   const viewportTiles = useMemo(() => {
-    const tiles = [];
+    // Explicitly type the array to prevent type inference issues
+    const tiles: TileData[][] = [];
     for (let y = playerPosition.y + viewportOffset; y >= playerPosition.y - viewportOffset; y--) {
-      const row = [];
+      const row: TileData[] = [];
       for (let x = playerPosition.x - viewportOffset; x <= playerPosition.x + viewportOffset; x++) {
         // Boundary checks
         if (y >= 0 && y < mapData.length && x >= 0 && x < mapData[0].length) {
           row.push({ ...mapData[y][x], x, y });
         } else {
           // Out of bounds void
-          row.push({ type: 'VOID', blocked: true, x, y, revealed: false });
+          // Explicitly cast to TileData and provide undefined for optional fields to satisfy the compiler
+          row.push({ 
+            type: 'VOID', 
+            blocked: true, 
+            x, 
+            y, 
+            revealed: false,
+            event: undefined 
+          } as TileData);
         }
       }
       tiles.push(row);
