@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { GameState, TileData, BiomeType, LogEntry, Position, Item } from './types';
+import { GameState, TileData, BiomeType, LogEntry, Position, Item, PlayerStats } from './types';
 import { MAP_WIDTH, MAP_HEIGHT, START_STATS, BIOME_CONFIG, LANDMARKS, WEATHER_NAMES, BIOME_NAMES, ITEMS, START_MONEY } from './constants';
 import GridMap from './components/GridMap';
 import StatsPanel from './components/StatsPanel';
@@ -7,6 +7,7 @@ import LogPanel from './components/LogPanel';
 import Controls from './components/Controls';
 import Shop from './components/Shop';
 import InventoryPanel from './components/InventoryPanel';
+import GameEndScreen from './components/GameEndScreen';
 import { generateNarrative, generateEncounter } from './services/geminiService';
 
 // Procedural Map Generation
@@ -56,6 +57,8 @@ const generateMap = (): TileData[][] => {
 
 const App: React.FC = () => {
   const [map, setMap] = useState<TileData[][]>([]);
+  const [mobileTab, setMobileTab] = useState<'EXPLORE' | 'BAG' | 'LOGS'>('EXPLORE');
+  const [deathCount, setDeathCount] = useState(0);
   
   const [gameState, setGameState] = useState<GameState>({
     phase: 'MENU',
@@ -72,6 +75,10 @@ const App: React.FC = () => {
 
   useEffect(() => {
     setMap(generateMap());
+    const storedDeaths = localStorage.getItem('ao_tai_death_count');
+    if (storedDeaths) {
+      setDeathCount(parseInt(storedDeaths, 10));
+    }
   }, []);
 
   const addLog = (text: string, type: LogEntry['type'] = 'info') => {
@@ -95,23 +102,58 @@ const App: React.FC = () => {
     return { moveEfficiency, warmthRetention };
   };
 
-  const checkGameOver = (currentStats: typeof START_STATS, pos: Position) => {
+  const handleGameOverState = (reason: string, won: boolean) => {
+    if (!won) {
+      const newCount = deathCount + 1;
+      setDeathCount(newCount);
+      localStorage.setItem('ao_tai_death_count', newCount.toString());
+    }
+    
+    setGameState(prev => ({ 
+      ...prev, 
+      phase: won ? 'VICTORY' : 'GAMEOVER', 
+      won, 
+      gameOverReason: reason 
+    }));
+  };
+
+  const checkGameOver = (currentStats: PlayerStats, pos: Position): boolean => {
     if (currentStats.health <= 0) {
-      setGameState(prev => ({ ...prev, phase: 'GAMEOVER', won: false }));
-      addLog("你因体力耗尽而倒下。游戏结束。", "danger");
+      handleGameOverState("身体机能耗尽 (HP为0)", false);
       return true;
     }
     if (currentStats.warmth <= 0) {
-      setGameState(prev => ({ ...prev, phase: 'GAMEOVER', won: false }));
-      addLog("寒冷吞噬了你。失温。游戏结束。", "danger");
+      handleGameOverState("严重失温 (体温为0)", false);
       return true;
     }
+    if (currentStats.energy <= 0) {
+       handleGameOverState("力竭倒地 (体力为0)", false);
+       return true;
+    }
+
     if (pos.y >= MAP_HEIGHT - 2) {
-      setGameState(prev => ({ ...prev, phase: 'VICTORY', won: true }));
-      addLog("你到达了鳌山大梁。你活下来了！", "success");
+      handleGameOverState("成功穿越", true);
       return true;
     }
     return false;
+  };
+
+  const handleRestart = () => {
+    // Soft reset logic
+    setMap(generateMap());
+    setGameState({
+        phase: 'MENU',
+        won: false,
+        turn: 0,
+        money: START_MONEY,
+        inventory: {},
+        position: { x: Math.floor(MAP_WIDTH / 2), y: 0 },
+        stats: { ...START_STATS },
+        weather: 'Sunny',
+        logs: [],
+        loadingAI: false,
+    });
+    setMobileTab('EXPLORE');
   };
 
   const processTurn = async (newPos: Position, baseCosts: { e: number, w: number }) => {
@@ -134,6 +176,13 @@ const App: React.FC = () => {
 
     newStats.energy -= finalEnergyCost;
     newStats.warmth -= finalWarmthCost;
+
+    // --- CRITICAL: Check Game Over BEFORE calculating events or updating state ---
+    // If we don't return here, the state update at the bottom of this function
+    // will overwrite the 'GAMEOVER' phase set by checkGameOver.
+    if (checkGameOver(newStats, newPos)) {
+        return; 
+    }
 
     // Events
     const tile = map[newPos.y][newPos.x];
@@ -175,7 +224,10 @@ const App: React.FC = () => {
       addLog(`天气变为：${WEATHER_NAMES[newWeather]}`, "info");
     }
 
-    const gameOver = checkGameOver(newStats, newPos);
+    // Final check in case events killed player
+    if (checkGameOver(newStats, newPos)) {
+        return;
+    }
     
     setGameState(prev => ({
       ...prev,
@@ -229,6 +281,10 @@ const App: React.FC = () => {
       health: Math.min(100, gameState.stats.health + healthRec),
       warmth: Math.min(100, gameState.stats.warmth + warmthRec)
     };
+    
+    // Using processTurn logic for stat updates would be recursive/complex, so we check Game Over here manually
+    // But resting shouldn't usually kill you unless we implement "hunger over time" while resting.
+    // For now, assume resting is safe unless stats were already critical, but we don't decrement stats for resting turn yet (simplified).
     
     setGameState(prev => ({
       ...prev,
@@ -300,7 +356,7 @@ const App: React.FC = () => {
   // 1. MENU
   if (gameState.phase === 'MENU') {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
+      <div className="h-[100dvh] bg-gray-900 flex items-center justify-center p-4 overflow-hidden">
         <div className="max-w-xl w-full border-4 border-gray-500 bg-black p-8 text-center space-y-6 shadow-2xl">
           <h1 className="text-4xl text-yellow-500 font-bold leading-relaxed mb-4 font-pixel">鳌太线：生死穿越</h1>
           <div className="text-gray-400 text-sm md:text-base space-y-4 text-justify leading-relaxed border-t border-b border-gray-800 py-6">
@@ -324,7 +380,7 @@ const App: React.FC = () => {
   // 2. SHOP
   if (gameState.phase === 'SHOP') {
       return (
-          <div className="min-h-screen bg-gray-800 flex items-center justify-center">
+          <div className="h-[100dvh] bg-gray-800 flex items-center justify-center overflow-hidden">
               <Shop 
                 money={gameState.money} 
                 inventory={gameState.inventory} 
@@ -337,24 +393,12 @@ const App: React.FC = () => {
 
   // 3. MAIN GAME
   return (
-    <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-2 md:p-6 font-pixel">
-      <div className="w-full max-w-7xl flex flex-col gap-4">
+    <div className="h-[100dvh] w-full bg-gray-900 text-gray-100 font-pixel overflow-hidden flex flex-col">
         
-        {/* Header Info */}
-        <div className="flex justify-between items-end px-2 border-b border-gray-800 pb-2">
-            <h1 className="text-yellow-500 text-xl tracking-widest">AO TAI LINE</h1>
-            <div className="flex gap-4 text-xs md:text-sm text-gray-500">
-                <span>POS: {gameState.position.x}, {gameState.position.y}</span>
-                <span>TURN: {gameState.turn}</span>
-                <span>BIOME: {BIOME_NAMES[map[gameState.position.y]?.[gameState.position.x]?.type]}</span>
-            </div>
-        </div>
-
-        {/* 3-Column Layout for Desktop */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-full">
-            
-            {/* Left Col: Stats & Inventory (3 cols wide) */}
-            <div className="lg:col-span-3 flex flex-col gap-4 order-2 lg:order-1 h-full">
+        {/* --- DESKTOP LAYOUT (LG and up) --- */}
+        <div className="hidden lg:grid lg:grid-cols-12 gap-4 h-full p-6 max-w-7xl mx-auto w-full">
+             {/* Left: Stats & Inventory */}
+            <div className="lg:col-span-3 flex flex-col gap-4 h-full">
                 <StatsPanel stats={gameState.stats} weather={gameState.weather} />
                 <div className="flex-1 min-h-[200px]">
                     <InventoryPanel 
@@ -365,61 +409,152 @@ const App: React.FC = () => {
                 </div>
             </div>
             
-            {/* Center Col: Map (6 cols wide) */}
-            <div className="lg:col-span-6 flex flex-col items-center justify-start order-1 lg:order-2">
+            {/* Center: Map */}
+            <div className="lg:col-span-6 flex flex-col items-center justify-start gap-4">
+                 <div className="flex justify-between items-end w-full px-2 border-b border-gray-800 pb-2">
+                    <h1 className="text-yellow-500 text-xl tracking-widest">AO TAI LINE</h1>
+                    <div className="flex gap-4 text-sm text-gray-500">
+                        <span>POS: {gameState.position.x}, {gameState.position.y}</span>
+                        <span>TURN: {gameState.turn}</span>
+                        <span>BIOME: {BIOME_NAMES[map[gameState.position.y]?.[gameState.position.x]?.type]}</span>
+                    </div>
+                </div>
                 <div className="w-full max-w-[500px]">
                     <GridMap mapData={map} playerPosition={gameState.position} />
                 </div>
-                {/* Mobile/Tablet Controls underneath map */}
-                <div className="lg:hidden w-full mt-4">
-                    <Controls onMove={handleMove} onRest={handleRest} disabled={gameState.loadingAI || gameState.phase !== 'PLAYING'} />
-                </div>
+                <Controls 
+                  onMove={handleMove} 
+                  onRest={handleRest} 
+                  disabled={gameState.loadingAI || gameState.phase !== 'PLAYING'}
+                  inventory={gameState.inventory}
+                  onUseItem={handleUseItem}
+                />
             </div>
 
-            {/* Right Col: Logs & Desktop Controls (3 cols wide) */}
-            <div className="lg:col-span-3 flex flex-col gap-4 order-3 h-full">
-                <div className="flex-1 min-h-[300px] border-4 border-gray-700 bg-black">
-                    <LogPanel logs={gameState.logs} />
-                </div>
-                <div className="hidden lg:block">
-                     <Controls onMove={handleMove} onRest={handleRest} disabled={gameState.loadingAI || gameState.phase !== 'PLAYING'} />
+            {/* Right: Logs */}
+            <div className="lg:col-span-3 flex flex-col gap-4 h-full">
+                <div className="flex-1 border-4 border-gray-700 bg-black">
+                    <LogPanel logs={gameState.logs} className="h-full" />
                 </div>
             </div>
         </div>
 
-        {/* Modal for Game Over / Victory */}
-        {(gameState.phase === 'GAMEOVER' || gameState.phase === 'VICTORY') && (
-          <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4 animate-fade-in">
-             <div className={`border-4 p-8 max-w-md text-center shadow-2xl ${gameState.won ? 'border-yellow-500 bg-yellow-900/20' : 'border-red-600 bg-red-900/20'}`}>
-                <h2 className={`text-3xl md:text-4xl mb-6 font-bold ${gameState.won ? 'text-yellow-400' : 'text-red-500'}`}>
-                    {gameState.won ? "穿越成功" : "确认遇难"}
-                </h2>
-                <p className="mb-8 text-gray-300 leading-relaxed">
-                    {gameState.won 
-                        ? "你凭借坚韧的意志和合理的规划，成功征服了鳌太线，站在了太白之巅。" 
-                        : "在这片荒凉的无人区，你的名字成为了后来者的警示。"}
-                </p>
-                <div className="text-sm text-gray-500 mb-8">
-                    存活回合数: {gameState.turn}
+        {/* --- MOBILE LAYOUT (Less than LG) --- */}
+        <div className="lg:hidden flex flex-col h-full">
+            {/* Mobile Header */}
+            <div className="p-3 border-b-2 border-gray-800 bg-black flex justify-between items-center text-xs md:text-sm shadow-md z-10">
+                <div className="flex gap-2">
+                    <span className="text-yellow-500 font-bold">T:{gameState.turn}</span>
+                    <span className="text-gray-400">Y:{gameState.position.y}</span>
                 </div>
+                <div className="font-bold text-gray-200">{BIOME_NAMES[map[gameState.position.y]?.[gameState.position.x]?.type]}</div>
+                <div className={`font-bold ${gameState.weather === 'Sunny' ? 'text-yellow-400' : 'text-blue-300'}`}>
+                    {WEATHER_NAMES[gameState.weather]}
+                </div>
+            </div>
+
+            {/* Mobile Main Content Area */}
+            <div className="flex-1 overflow-y-auto bg-gray-900 relative">
+                {mobileTab === 'EXPLORE' && (
+                    <div className="flex flex-col items-center justify-start h-full p-2">
+                         {/* Compact Stats Bar */}
+                        <div className="w-full flex gap-1 mb-2">
+                            <div className="flex-1 bg-gray-800 border border-gray-600 h-6 relative">
+                                <div className="absolute inset-0 bg-red-900/50 flex items-center justify-center text-[10px] z-10">HP {Math.floor(gameState.stats.health)}</div>
+                                <div className="h-full bg-red-600" style={{width: `${gameState.stats.health}%`}}></div>
+                            </div>
+                            <div className="flex-1 bg-gray-800 border border-gray-600 h-6 relative">
+                                <div className="absolute inset-0 bg-orange-900/50 flex items-center justify-center text-[10px] z-10">暖 {Math.floor(gameState.stats.warmth)}</div>
+                                <div className="h-full bg-orange-500" style={{width: `${gameState.stats.warmth}%`}}></div>
+                            </div>
+                            <div className="flex-1 bg-gray-800 border border-gray-600 h-6 relative">
+                                <div className="absolute inset-0 bg-green-900/50 flex items-center justify-center text-[10px] z-10">体 {Math.floor(gameState.stats.energy)}</div>
+                                <div className="h-full bg-green-600" style={{width: `${gameState.stats.energy}%`}}></div>
+                            </div>
+                        </div>
+
+                        {/* Map */}
+                        <div className="w-full max-w-[400px] aspect-square mb-4 shadow-lg">
+                            <GridMap mapData={map} playerPosition={gameState.position} />
+                        </div>
+
+                        {/* Controls */}
+                        <div className="w-full max-w-[400px]">
+                            <Controls 
+                                onMove={handleMove} 
+                                onRest={handleRest} 
+                                disabled={gameState.loadingAI || gameState.phase !== 'PLAYING'}
+                                inventory={gameState.inventory}
+                                onUseItem={handleUseItem}
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {mobileTab === 'BAG' && (
+                    <div className="h-full flex flex-col p-4 gap-4">
+                        <StatsPanel stats={gameState.stats} weather={gameState.weather} />
+                        <div className="flex-1 overflow-hidden">
+                             <InventoryPanel 
+                                inventory={gameState.inventory} 
+                                onUse={handleUseItem} 
+                                disabled={gameState.loadingAI || gameState.phase !== 'PLAYING'} 
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {mobileTab === 'LOGS' && (
+                    <div className="h-full bg-black p-2">
+                        <LogPanel logs={gameState.logs} className="h-full" />
+                    </div>
+                )}
+            </div>
+
+            {/* Mobile Tab Bar */}
+            <div className="h-16 bg-gray-900 border-t-2 border-gray-700 flex text-xs font-bold z-20">
                 <button 
-                    onClick={() => window.location.reload()}
-                    className="bg-white text-black px-8 py-3 text-lg font-bold hover:bg-gray-200 transition-colors"
+                    onClick={() => setMobileTab('EXPLORE')} 
+                    className={`flex-1 flex flex-col items-center justify-center gap-1 ${mobileTab === 'EXPLORE' ? 'text-yellow-400 bg-gray-800' : 'text-gray-500 hover:text-gray-300'}`}
                 >
-                    再次挑战
+                    <span className="text-xl">🧭</span>
+                    探索
                 </button>
-             </div>
-          </div>
+                <button 
+                    onClick={() => setMobileTab('BAG')} 
+                    className={`flex-1 flex flex-col items-center justify-center gap-1 ${mobileTab === 'BAG' ? 'text-yellow-400 bg-gray-800' : 'text-gray-500 hover:text-gray-300'}`}
+                >
+                    <span className="text-xl">🎒</span>
+                    背包
+                </button>
+                <button 
+                    onClick={() => setMobileTab('LOGS')} 
+                    className={`flex-1 flex flex-col items-center justify-center gap-1 ${mobileTab === 'LOGS' ? 'text-yellow-400 bg-gray-800' : 'text-gray-500 hover:text-gray-300'}`}
+                >
+                    <span className="text-xl">📜</span>
+                    日志
+                    {gameState.logs.length > 0 && <span className="w-2 h-2 rounded-full bg-red-500 absolute top-4 ml-4 animate-pulse"></span>}
+                </button>
+            </div>
+        </div>
+
+        {/* Game End Screen Overlay */}
+        {(gameState.phase === 'GAMEOVER' || gameState.phase === 'VICTORY') && (
+            <GameEndScreen 
+                state={gameState} 
+                onRestart={handleRestart} 
+                mapType={BIOME_NAMES[map[gameState.position.y]?.[gameState.position.x]?.type]}
+                deathCount={deathCount}
+            />
         )}
         
         {/* AI Loading Indicator */}
         {gameState.loadingAI && (
-            <div className="fixed top-4 right-4 bg-blue-900/80 border border-blue-500 text-blue-200 px-4 py-2 text-sm animate-pulse rounded z-50">
-                AI 正在生成剧情...
+            <div className="fixed top-20 right-4 bg-blue-900/90 border border-blue-500 text-blue-200 px-4 py-2 text-sm animate-pulse rounded z-50 shadow-lg">
+                AI 生成中...
             </div>
         )}
 
-      </div>
     </div>
   );
 };

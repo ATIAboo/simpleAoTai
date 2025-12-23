@@ -3,9 +3,10 @@ import { LogEntry } from '../types';
 
 interface LogPanelProps {
   logs: LogEntry[];
+  className?: string;
 }
 
-const LogPanel: React.FC<LogPanelProps> = ({ logs }) => {
+const LogPanel: React.FC<LogPanelProps> = ({ logs, className = '' }) => {
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -13,7 +14,7 @@ const LogPanel: React.FC<LogPanelProps> = ({ logs }) => {
   }, [logs]);
 
   return (
-    <div className="bg-black border-4 border-gray-600 h-48 p-2 overflow-y-auto font-mono text-xs md:text-sm leading-relaxed flex flex-col gap-2">
+    <div className={`bg-black border-4 border-gray-600 p-2 overflow-y-auto font-mono text-xs md:text-sm leading-relaxed flex flex-col gap-2 ${className}`}>
       {logs.length === 0 && <div className="text-gray-500 italic">旅程开始...</div>}
       
       {logs.map((log) => {

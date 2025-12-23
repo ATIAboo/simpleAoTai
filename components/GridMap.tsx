@@ -50,6 +50,7 @@ const GridMap: React.FC<GridMapProps> = ({ mapData, playerPosition }) => {
         {viewportTiles.map((row, rIndex) => (
           row.map((tile, cIndex) => {
             const isPlayer = tile.x === playerPosition.x && tile.y === playerPosition.y;
+            const isBlocked = tile.blocked && tile.type !== 'VOID';
             
             let bgClass = 'bg-black';
             let symbol = '';
@@ -59,7 +60,6 @@ const GridMap: React.FC<GridMapProps> = ({ mapData, playerPosition }) => {
             
             if (tile.type !== 'VOID') {
                 bgClass = config.color;
-                // Only show terrain symbol if revealed or close
                 symbol = config.symbol; 
                 
                 if (tile.event === 'landmark') symbol = '⛩️';
@@ -70,17 +70,30 @@ const GridMap: React.FC<GridMapProps> = ({ mapData, playerPosition }) => {
               <div 
                 key={`${tile.x}-${tile.y}`}
                 className={`
-                  relative w-full h-full flex items-center justify-center text-xl md:text-2xl select-none
+                  relative w-full h-full flex items-center justify-center text-xl md:text-2xl select-none overflow-hidden
                   ${bgClass}
                   ${isPlayer ? 'ring-2 ring-white z-10' : ''}
                   transition-all duration-200
                 `}
               >
-                {isPlayer ? (
-                  <span className="animate-bounce">🚶</span>
-                ) : (
-                   <span className="opacity-80">{symbol}</span>
+                {/* Blocked Terrain Pattern Overlay */}
+                {isBlocked && (
+                  <div className="absolute inset-0 opacity-40 bg-[repeating-linear-gradient(45deg,#000,#000_10px,transparent_10px,transparent_20px)] pointer-events-none"></div>
                 )}
+
+                <div className="relative z-10 flex items-center justify-center w-full h-full">
+                  {isPlayer ? (
+                    <span className="animate-bounce">🚶</span>
+                  ) : (
+                    <>
+                     {isBlocked ? (
+                        <span className="opacity-50 grayscale brightness-75 drop-shadow-md text-2xl">⛰️</span>
+                     ) : (
+                        <span className="opacity-80">{symbol}</span>
+                     )}
+                    </>
+                  )}
+                </div>
                 
                 {/* Fog of war overlay logic could go here, but we're keeping it simple for retro style */}
                 <div className="absolute inset-0 bg-black opacity-10 pointer-events-none"></div>

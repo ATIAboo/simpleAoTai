@@ -43,6 +43,7 @@ export interface GameState {
   logs: LogEntry[];
   loadingAI: boolean;
   won: boolean;
+  gameOverReason?: string; // New field to store specific death cause
 }
 
 export interface TileData {
