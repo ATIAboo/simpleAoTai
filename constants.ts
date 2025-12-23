@@ -37,6 +37,7 @@ export const BIOME_CONFIG: Record<BiomeType, { color: string, symbol: string, da
   STONE_SEA: { color: 'bg-stone-600', symbol: '🪨', danger: 5 },
   SNOW_RIDGE: { color: 'bg-slate-200 text-slate-800', symbol: '❄️', danger: 7 },
   PEAK: { color: 'bg-yellow-200 text-yellow-900', symbol: '🚩', danger: 8 },
+  VOID: { color: 'bg-black', symbol: '', danger: 0 },
 };
 
 export const BIOME_NAMES: Record<BiomeType, string> = {
@@ -45,6 +46,7 @@ export const BIOME_NAMES: Record<BiomeType, string> = {
   STONE_SEA: '石海',
   SNOW_RIDGE: '雪脊',
   PEAK: '顶峰',
+  VOID: '虚空',
 };
 
 export const WEATHER_NAMES: Record<string, string> = {

@@ -1,4 +1,4 @@
-export type BiomeType = 'FOREST' | 'MEADOW' | 'STONE_SEA' | 'SNOW_RIDGE' | 'PEAK';
+export type BiomeType = 'FOREST' | 'MEADOW' | 'STONE_SEA' | 'SNOW_RIDGE' | 'PEAK' | 'VOID';
 
 export interface Position {
   x: number;
@@ -42,6 +42,7 @@ export interface GameState {
   weather: 'Sunny' | 'Cloudy' | 'Windy' | 'Blizzard' | 'Fog';
   logs: LogEntry[];
   loadingAI: boolean;
+  won: boolean;
 }
 
 export interface TileData {

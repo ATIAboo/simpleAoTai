@@ -59,8 +59,6 @@ const App: React.FC = () => {
   
   const [gameState, setGameState] = useState<GameState>({
     phase: 'MENU',
-    started: false, // Legacy
-    finished: false, // Legacy
     won: false,
     turn: 0,
     money: START_MONEY,

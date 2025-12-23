@@ -45,8 +45,10 @@ const GridMap: React.FC<GridMapProps> = ({ mapData, playerPosition }) => {
             let bgClass = 'bg-black';
             let symbol = '';
 
+            // Safe to access config now that VOID is a valid BiomeType with a config entry
+            const config = BIOME_CONFIG[tile.type as BiomeType];
+            
             if (tile.type !== 'VOID') {
-                const config = BIOME_CONFIG[tile.type as BiomeType];
                 bgClass = config.color;
                 // Only show terrain symbol if revealed or close
                 symbol = config.symbol; 
